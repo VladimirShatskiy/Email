@@ -1,17 +1,16 @@
 import os, sys
 import smtplib
-
 from configparser import ConfigParser
 from email import encoders
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.utils import formatdate
-
 import window
+from pathlib import Path
 
 
-def send_email(to_addr, subject, text, file_to_attach):
+def send_email(to_addr, subject, text, file_to_attach, cc):
     """
     Отправка электронного письма с вложением
     """
@@ -27,7 +26,6 @@ def send_email(to_addr, subject, text, file_to_attach):
         port = cfg.get("smtp", "port")
         from_addr = cfg.get("smtp", "email")
         passwd = cfg.get("smtp", "passwd")
-        cc = cfg.get("smtp", "cc")
     else:
         print("Конфигурация не найдена!")
         sys.exit(1)
@@ -37,22 +35,33 @@ def send_email(to_addr, subject, text, file_to_attach):
     msg["From"] = from_addr
     msg["Subject"] = subject
     msg["Date"] = formatdate(localtime=True)
+
     if text:
         # текст письма отправляем как вложение
         msg.attach(MIMEText(text))
-    msg["To"] = ', '.join(to_addr)
-    msg["cc"] = cc
-    emails = to_addr
+    if len(to_addr) > 1:
+        msg["To"] = ', '.join(to_addr)
+    else:
+        msg["To"] = to_addr[0]
 
-    attachment = MIMEBase('application', "octet-stream")
-    header = 'Content-Disposition', f'attachment; filename="{file_to_attach}"'
+    if len(to_addr) > 1:
+        msg["cc"] = ', '.join(cc)
+    else:
+        if cc:
+           msg["cc"] = cc[0]
+
+    emails = to_addr + cc
+
     try:
-        with open(file_to_attach, "rb") as fh:
-            data = fh.read()
-        attachment.set_payload(data)
-        encoders.encode_base64(attachment)
-        attachment.add_header(*header)
-        msg.attach(attachment)
+        for path in file_to_attach:
+            part = MIMEBase('application', "octet-stream")
+            with open(path, 'rb') as file:
+                part.set_payload(file.read())
+            encoders.encode_base64(part)
+            part.add_header('Content-Disposition',
+                            'attachment', filename=Path(path).name)
+            msg.attach(part)
+
     except IOError:
         print(f"Ошибка при открытии файла вложения {file_to_attach}")
 
@@ -70,11 +79,5 @@ def send_email(to_addr, subject, text, file_to_attach):
 
 
 if __name__ == "__main__":
-    to_addr = ["shatskiy.v@gmail.com", "shatskiy.v@inbox.ru", "vshatsky@nmrauto.ru"]
-    subject = "Тестовое письмо от Python."
-    text = "Тестовое письмо для отправки!\nС Уважением\nя"
-    file_attach = 'temp.txt'
-    # send_email(to_addr, subject, text, file_attach)
     window.start()
 
-    print("act")
